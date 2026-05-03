@@ -1,0 +1,90 @@
+name: JFrog Integrated CI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: jfrog-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  RESOLVE_REPO: maven-virtual
+  DEPLOY_REPO: maven-local
+  BUILD_NAME: spring-petclinic-jfrog
+  BUILD_NUMBER: ${{ github.run_number }}
+
+jobs:
+  jfrog-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Validate required secrets
+        run: |
+          test -n "${{ secrets.JF_URL }}"
+          test -n "${{ secrets.JF_ACCESS_TOKEN }}"
+
+      - name: Configure Maven to resolve and deploy via JFrog
+        run: |
+          jf mvn-config \
+            --repo-resolve-releases "${RESOLVE_REPO}" \
+            --repo-resolve-snapshots "${RESOLVE_REPO}" \
+            --repo-deploy-releases "${DEPLOY_REPO}" \
+            --repo-deploy-snapshots "${DEPLOY_REPO}"
+
+      - name: Build and collect build info
+        run: |
+          jf mvn -B -DskipTests clean package
+
+      - name: Xray dependency audit
+        continue-on-error: true
+        run: |
+          jf audit --format=json > jfrog-audit.json
+
+      - name: Xray artifact scan
+        continue-on-error: true
+        run: |
+          jf scan "target/*.jar" --format=json > jfrog-scan.json
+
+      - name: Upload jar to JFrog Artifactory
+        run: |
+          jf rt upload "target/*.jar" "${DEPLOY_REPO}/org/springframework/samples/petclinic/${GITHUB_SHA}/"
+
+      - name: Publish build info to JFrog
+        run: |
+          jf rt build-collect-env "${BUILD_NAME}" "${BUILD_NUMBER}"
+          jf rt build-add-git "${BUILD_NAME}" "${BUILD_NUMBER}"
+          jf rt build-publish "${BUILD_NAME}" "${BUILD_NUMBER}"
+
+      - name: Scan published build in Xray
+        continue-on-error: true
+        run: |
+          jf rt build-scan "${BUILD_NAME}" "${BUILD_NUMBER}"
+
+      - name: Upload scan reports as workflow artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jfrog-security-reports
+          if-no-files-found: warn
+          path: |
+            jfrog-audit.json
+            jfrog-scan.json

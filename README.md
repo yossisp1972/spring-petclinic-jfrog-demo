@@ -48,6 +48,17 @@ There is no `Dockerfile` in this project. You can build a container image (if yo
 ./mvnw spring-boot:build-image
 ```
 
+## JFrog CI Pipeline
+
+This fork includes a GitHub Actions pipeline integrated with JFrog Artifactory and Xray for interview/home-assignment purposes.
+
+See [JFROG_PIPELINE.md](JFROG_PIPELINE.md) for:
+
+- Required JFrog repository setup
+- Required GitHub secrets
+- How dependency resolution is forced through JFrog
+- Xray scan and artifact publication flow
+
 ## In case you find a bug/suggested improvement for Spring Petclinic
 
 Our issue tracker is available [here](https://github.com/spring-projects/spring-petclinic/issues).
