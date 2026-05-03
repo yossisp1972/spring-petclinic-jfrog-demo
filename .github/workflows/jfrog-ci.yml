@@ -67,14 +67,18 @@ jobs:
           jf mvn -B -DskipTests clean package
 
       - name: Xray dependency audit
-        continue-on-error: true
         run: |
-          jf audit --format=json > jfrog-audit.json
+          if ! jf audit --format=json > jfrog-audit.json; then
+            echo "jf audit returned a non-zero status. This usually means optional Advanced Security scanners (SAST/Secrets/IaC/Contextual) are not enabled for this account." >&2
+            echo "SCA findings may still be present in jfrog-audit.json and in the JFrog platform." >&2
+          fi
 
       - name: Xray artifact scan
-        continue-on-error: true
         run: |
-          jf scan "target/*.jar" --format=json > jfrog-scan.json
+          if ! jf scan "target/*.jar" --format=json > jfrog-scan.json; then
+            echo "jf scan returned a non-zero status. This usually means optional Advanced Security scanners (Secrets/Contextual) are not enabled for this account." >&2
+            echo "Artifact SCA findings may still be present in jfrog-scan.json and in the JFrog platform." >&2
+          fi
 
       - name: Upload jar to JFrog Artifactory
         run: |
