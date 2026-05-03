@@ -42,6 +42,18 @@ jobs:
           test -n "${{ secrets.JF_URL }}"
           test -n "${{ secrets.JF_ACCESS_TOKEN }}"
 
+      - name: Verify JFrog connectivity and repository access
+        run: |
+          jf rt ping
+          jf rt curl -sf "/api/repositories/${RESOLVE_REPO}" > /dev/null || {
+            echo "Unable to access resolve repository ${RESOLVE_REPO}. Check JF_URL, token permissions, and repository visibility."
+            exit 1
+          }
+          jf rt curl -sf "/api/repositories/${DEPLOY_REPO}" > /dev/null || {
+            echo "Unable to access deploy repository ${DEPLOY_REPO}. Check token deploy permissions and repository visibility."
+            exit 1
+          }
+
       - name: Configure Maven to resolve and deploy via JFrog
         run: |
           jf mvn-config \
