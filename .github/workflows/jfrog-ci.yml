@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload jar to JFrog Artifactory
         run: |
-          jf rt upload "target/*.jar" "${DEPLOY_REPO}/org/springframework/samples/petclinic/${GITHUB_SHA}/"
+          jf rt upload "target/*.jar" "${DEPLOY_REPO}/org/springframework/samples/petclinic/${GITHUB_SHA}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/"
 
       - name: Publish build info to JFrog
         run: |
