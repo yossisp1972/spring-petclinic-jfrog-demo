@@ -91,6 +91,50 @@ jobs:
         run: |
           jf rt build-scan "${BUILD_NAME}" "${BUILD_NUMBER}"
 
+      - name: Publish Xray scan results to workflow summary
+        if: always()
+        run: |
+          echo "## JFrog Xray Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build:** \`${BUILD_NAME}\` #${BUILD_NUMBER}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f jfrog-audit.json ]; then
+            echo "### Dependency Audit" >> $GITHUB_STEP_SUMMARY
+            CRITICAL=$(jq '[.. | objects | select(.severity=="Critical")] | length' jfrog-audit.json 2>/dev/null || echo "N/A")
+            HIGH=$(jq '[.. | objects | select(.severity=="High")] | length' jfrog-audit.json 2>/dev/null || echo "N/A")
+            MEDIUM=$(jq '[.. | objects | select(.severity=="Medium")] | length' jfrog-audit.json 2>/dev/null || echo "N/A")
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | ${CRITICAL} |" >> $GITHUB_STEP_SUMMARY
+            echo "| High     | ${HIGH} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium   | ${MEDIUM} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Dependency Audit" >> $GITHUB_STEP_SUMMARY
+            echo "_No audit report generated._" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f jfrog-scan.json ]; then
+            echo "### Artifact Scan" >> $GITHUB_STEP_SUMMARY
+            CRITICAL=$(jq '[.. | objects | select(.severity=="Critical")] | length' jfrog-scan.json 2>/dev/null || echo "N/A")
+            HIGH=$(jq '[.. | objects | select(.severity=="High")] | length' jfrog-scan.json 2>/dev/null || echo "N/A")
+            MEDIUM=$(jq '[.. | objects | select(.severity=="Medium")] | length' jfrog-scan.json 2>/dev/null || echo "N/A")
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | ${CRITICAL} |" >> $GITHUB_STEP_SUMMARY
+            echo "| High     | ${HIGH} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium   | ${MEDIUM} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Artifact Scan" >> $GITHUB_STEP_SUMMARY
+            echo "_No artifact scan report generated._" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Full scan details available in JFrog platform under Builds → \`${BUILD_NAME}\`" >> $GITHUB_STEP_SUMMARY
+
       - name: Upload scan reports as workflow artifacts
         if: always()
         uses: actions/upload-artifact@v4
