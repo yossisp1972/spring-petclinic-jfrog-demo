@@ -68,16 +68,38 @@ jobs:
 
       - name: Xray dependency audit
         run: |
-          if ! jf audit --format=json > jfrog-audit.json; then
-            echo "jf audit returned a non-zero status. This usually means optional Advanced Security scanners (SAST/Secrets/IaC/Contextual) are not enabled for this account." >&2
-            echo "SCA findings may still be present in jfrog-audit.json and in the JFrog platform." >&2
+          set +e
+          jf audit --format=json > jfrog-audit.json 2> jfrog-audit.err
+          AUDIT_EXIT=$?
+          set -e
+
+          if [ ${AUDIT_EXIT} -ne 0 ]; then
+            if grep -q "exit status 41" jfrog-audit.err; then
+              echo "jf audit returned exit ${AUDIT_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
+              echo "SCA findings may still be present in jfrog-audit.json and in the JFrog platform."
+            else
+              echo "jf audit failed with exit ${AUDIT_EXIT}." >&2
+              cat jfrog-audit.err >&2
+              exit ${AUDIT_EXIT}
+            fi
           fi
 
       - name: Xray artifact scan
         run: |
-          if ! jf scan "target/*.jar" --format=json > jfrog-scan.json; then
-            echo "jf scan returned a non-zero status. This usually means optional Advanced Security scanners (Secrets/Contextual) are not enabled for this account." >&2
-            echo "Artifact SCA findings may still be present in jfrog-scan.json and in the JFrog platform." >&2
+          set +e
+          jf scan "target/*.jar" --format=json > jfrog-scan.json 2> jfrog-scan.err
+          SCAN_EXIT=$?
+          set -e
+
+          if [ ${SCAN_EXIT} -ne 0 ]; then
+            if grep -q "exit status 41" jfrog-scan.err; then
+              echo "jf scan returned exit ${SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
+              echo "Artifact SCA findings may still be present in jfrog-scan.json and in the JFrog platform."
+            else
+              echo "jf scan failed with exit ${SCAN_EXIT}." >&2
+              cat jfrog-scan.err >&2
+              exit ${SCAN_EXIT}
+            fi
           fi
 
       - name: Upload jar to JFrog Artifactory
@@ -147,4 +169,6 @@ jobs:
           if-no-files-found: warn
           path: |
             jfrog-audit.json
+            jfrog-audit.err
             jfrog-scan.json
+            jfrog-scan.err
