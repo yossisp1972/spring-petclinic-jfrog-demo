@@ -115,9 +115,22 @@ jobs:
           jf rt build-publish "${BUILD_NAME}" "${BUILD_NUMBER}"
 
       - name: Scan published build in Xray
-        continue-on-error: true
         run: |
-          jf rt build-scan "${BUILD_NAME}" "${BUILD_NUMBER}"
+          set +e
+          jf rt build-scan "${BUILD_NAME}" "${BUILD_NUMBER}" --format=json > jfrog-build-scan.json 2> jfrog-build-scan.err
+          BUILD_SCAN_EXIT=$?
+          set -e
+
+          if [ ${BUILD_SCAN_EXIT} -ne 0 ]; then
+            if grep -q "exit status 41" jfrog-build-scan.err; then
+              echo "jf rt build-scan returned exit ${BUILD_SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
+              echo "Build SCA findings may still be present in jfrog-build-scan.json and in the JFrog platform."
+            else
+              echo "jf rt build-scan failed with exit ${BUILD_SCAN_EXIT}." >&2
+              cat jfrog-build-scan.err >&2
+              exit ${BUILD_SCAN_EXIT}
+            fi
+          fi
 
       - name: Publish Xray scan results to workflow summary
         if: always()
@@ -126,6 +139,26 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build:** \`${BUILD_NAME}\` #${BUILD_NUMBER}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f jfrog-build-scan.json ]; then
+            echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
+            CRITICAL=$(jq '[.. | objects | select(.severity=="Critical")] | length' jfrog-build-scan.json 2>/dev/null || echo "N/A")
+            HIGH=$(jq '[.. | objects | select(.severity=="High")] | length' jfrog-build-scan.json 2>/dev/null || echo "N/A")
+            MEDIUM=$(jq '[.. | objects | select(.severity=="Medium")] | length' jfrog-build-scan.json 2>/dev/null || echo "N/A")
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | ${CRITICAL} |" >> $GITHUB_STEP_SUMMARY
+            echo "| High     | ${HIGH} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium   | ${MEDIUM} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
+            echo "_No build scan report generated._" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Additional Scan Context" >> $GITHUB_STEP_SUMMARY
+          echo "_The sections below may differ from JFrog UI totals because they represent source/artifact scope rather than published build scope._" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ -f jfrog-audit.json ]; then
@@ -174,3 +207,5 @@ jobs:
             jfrog-audit.err
             jfrog-scan.json
             jfrog-scan.err
+            jfrog-build-scan.json
+            jfrog-build-scan.err
