@@ -123,8 +123,11 @@ jobs:
 
           if [ ${BUILD_SCAN_EXIT} -ne 0 ]; then
             if grep -q "exit status 41" jfrog-build-scan.err; then
-              echo "jf rt build-scan returned exit ${BUILD_SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
+              echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
               echo "Build SCA findings may still be present in JFrog platform."
+            elif grep -q "403 Forbidden" jfrog-build-scan.err; then
+              echo "jf build-scan returned exit ${BUILD_SCAN_EXIT} due to 403 Forbidden."
+              echo "This token can publish build-info but cannot trigger/read Xray build scans. Grant Xray permission for the CI identity on this build/repositories."
             else
               echo "jf build-scan failed with exit ${BUILD_SCAN_EXIT}." >&2
               cat jfrog-build-scan.err >&2
