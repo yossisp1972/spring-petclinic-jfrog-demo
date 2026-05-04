@@ -128,6 +128,9 @@ jobs:
             elif grep -q "403 Forbidden" jfrog-build-scan.err; then
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT} due to 403 Forbidden."
               echo "This token can publish build-info but cannot trigger/read Xray build scans. Grant Xray permission for the CI identity on this build/repositories."
+            elif grep -q "not selected for indexing" jfrog-build-scan.err; then
+              echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}: build is not selected for Xray indexing."
+              echo "To fix: in JFrog UI go to Xray Settings -> Builds Indexing and add 'spring-petclinic-jfrog' to the indexed builds list."
             else
               echo "jf build-scan failed with exit ${BUILD_SCAN_EXIT}." >&2
               cat jfrog-build-scan.err >&2
