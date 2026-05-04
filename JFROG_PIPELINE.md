@@ -53,15 +53,15 @@ The pipeline performs:
 
 - Dependency audit: `jf audit`
 - Artifact scan: `jf scan target/*.jar`
-- Optional build scan: `jf rt build-scan`
+- Optional build scan: `jf build-scan <build-name> <build-number>`
 
-Scans are configured with `continue-on-error: true` to keep the pipeline informative without blocking publication.
+Scans are configured to keep the pipeline informative without blocking publication when known trial-tier limitations are detected (for example unavailable advanced scanners, limited build-scan permissions, or missing build indexing).
 
 ## Artifact Publication
 
-The pipeline uploads built JAR files to:
+The pipeline uploads built JAR files to a unique run-specific path:
 
-`maven-local/org/springframework/samples/petclinic/<git-sha>/`
+`maven-local/org/springframework/samples/petclinic/<git-sha>/<run-id>-<run-attempt>/`
 
 Build metadata is published with:
 

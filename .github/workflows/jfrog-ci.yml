@@ -116,19 +116,25 @@ jobs:
 
       - name: Scan published build in Xray
         run: |
+          echo "failed" > jfrog-build-scan.status
           set +e
           jf build-scan "${BUILD_NAME}" "${BUILD_NUMBER}" > jfrog-build-scan.out 2> jfrog-build-scan.err
           BUILD_SCAN_EXIT=$?
           set -e
 
-          if [ ${BUILD_SCAN_EXIT} -ne 0 ]; then
+          if [ ${BUILD_SCAN_EXIT} -eq 0 ]; then
+            echo "success" > jfrog-build-scan.status
+          else
             if grep -q "exit status 41" jfrog-build-scan.err; then
+              echo "soft-fail-entitlement" > jfrog-build-scan.status
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
               echo "Build SCA findings may still be present in JFrog platform."
             elif grep -q "403 Forbidden" jfrog-build-scan.err; then
+              echo "soft-fail-permission" > jfrog-build-scan.status
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT} due to 403 Forbidden."
               echo "This token can publish build-info but cannot trigger/read Xray build scans. Grant Xray permission for the CI identity on this build/repositories."
             elif grep -q "not selected for indexing" jfrog-build-scan.err; then
+              echo "soft-fail-indexing" > jfrog-build-scan.status
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}: build is not selected for Xray indexing."
               echo "To fix: in JFrog UI go to Xray Settings -> Builds Indexing and add 'spring-petclinic-jfrog' to the indexed builds list."
             else
@@ -147,10 +153,24 @@ jobs:
           echo "**Commit:** \`${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -f jfrog-build-scan.out ]; then
+          BUILD_SCAN_STATUS="not-run"
+          if [ -f jfrog-build-scan.status ]; then
+            BUILD_SCAN_STATUS=$(cat jfrog-build-scan.status)
+          fi
+
+          if [ "${BUILD_SCAN_STATUS}" = "success" ]; then
             echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
             echo "Build scan completed successfully for this run." >> $GITHUB_STEP_SUMMARY
             echo "See JFrog UI for policy-based issue counts for build \`${BUILD_NAME}\` #${BUILD_NUMBER}." >> $GITHUB_STEP_SUMMARY
+          elif [ "${BUILD_SCAN_STATUS}" = "soft-fail-entitlement" ]; then
+            echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
+            echo "Build scan executed with limited coverage because optional Advanced Security scanners are unavailable in this account tier." >> $GITHUB_STEP_SUMMARY
+          elif [ "${BUILD_SCAN_STATUS}" = "soft-fail-permission" ]; then
+            echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
+            echo "Build scan could not be fully evaluated due to Xray permission limits for this CI token (403 Forbidden)." >> $GITHUB_STEP_SUMMARY
+          elif [ "${BUILD_SCAN_STATUS}" = "soft-fail-indexing" ]; then
+            echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
+            echo "Build scan could not be fully evaluated because this build is not selected for Xray indexing." >> $GITHUB_STEP_SUMMARY
           else
             echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
             echo "_No build scan report generated._" >> $GITHUB_STEP_SUMMARY
@@ -209,3 +229,4 @@ jobs:
             jfrog-scan.err
             jfrog-build-scan.out
             jfrog-build-scan.err
+            jfrog-build-scan.status
