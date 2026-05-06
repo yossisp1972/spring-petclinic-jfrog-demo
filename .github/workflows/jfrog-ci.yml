@@ -64,13 +64,14 @@ jobs:
             --repo-deploy-releases "${DEPLOY_REPO}" \
             --repo-deploy-snapshots "${DEPLOY_REPO}"
 
+      #build using jfrog cli in batch mode and skip tests, deletes previous
       - name: Build and collect build info
         run: |
           jf mvn -B -DskipTests clean package
 
       - name: Xray dependency audit
         run: |
-          set +e
+          set +e # continue on audit errors to allow handling of optional entitlement limits
           jf audit --format=json > jfrog-audit.json 2> jfrog-audit.err
           AUDIT_EXIT=$?
           set -e
@@ -88,7 +89,7 @@ jobs:
 
       - name: Xray artifact scan
         run: |
-          set +e
+          set +e # continue on scan errors to allow handling of optional entitlement limits
           jf scan "target/*.jar" --format=json > jfrog-scan.json 2> jfrog-scan.err
           SCAN_EXIT=$?
           set -e
@@ -129,10 +130,6 @@ jobs:
               echo "soft-fail-entitlement" > jfrog-build-scan.status
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
               echo "Build SCA findings may still be present in JFrog platform."
-            elif grep -q "403 Forbidden" jfrog-build-scan.err; then
-              echo "soft-fail-permission" > jfrog-build-scan.status
-              echo "jf build-scan returned exit ${BUILD_SCAN_EXIT} due to 403 Forbidden."
-              echo "This token can publish build-info but cannot trigger/read Xray build scans. Grant Xray permission for the CI identity on this build/repositories."
             elif grep -q "not selected for indexing" jfrog-build-scan.err; then
               echo "soft-fail-indexing" > jfrog-build-scan.status
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}: build is not selected for Xray indexing."
