@@ -1,0 +1,170 @@
+name: JFrog Promotion CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_name:
+        description: Build name published by CI
+        required: true
+        default: spring-petclinic-jfrog
+      build_number:
+        description: Build number published by CI
+        required: true
+      source_repo:
+        description: Source repository that currently holds artifacts
+        required: true
+        default: maven-local
+      target_repo:
+        description: Release repository used for promoted artifacts
+        required: true
+        default: maven-release-local
+      artifact_type:
+        description: Artifact deployment type
+        required: true
+        default: jar
+        type: choice
+        options:
+          - jar
+          - docker
+      artifact_path:
+        description: Artifact path under target repo (for jar deployments)
+        required: false
+        default: org/springframework/samples/petclinic/**/*.jar
+      docker_image:
+        description: Docker image reference in Artifactory (for docker deployments)
+        required: false
+        default: docker-release-local/petclinic:latest
+
+permissions:
+  contents: read
+
+env:
+  JF_URL: ${{ secrets.JF_URL }}
+  JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+jobs:
+  promote:
+    name: Promote Approved Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release-approval
+    outputs:
+      build_name: ${{ steps.meta.outputs.build_name }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      target_repo: ${{ steps.meta.outputs.target_repo }}
+      artifact_type: ${{ steps.meta.outputs.artifact_type }}
+      artifact_path: ${{ steps.meta.outputs.artifact_path }}
+      docker_image: ${{ steps.meta.outputs.docker_image }}
+    steps:
+      - name: Set up JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Validate inputs and secrets
+        id: meta
+        run: |
+          test -n "${JF_URL}"
+          test -n "${JF_ACCESS_TOKEN}"
+          test -n "${{ github.event.inputs.build_name }}"
+          test -n "${{ github.event.inputs.build_number }}"
+          test -n "${{ github.event.inputs.source_repo }}"
+          test -n "${{ github.event.inputs.target_repo }}"
+
+          echo "build_name=${{ github.event.inputs.build_name }}" >> "$GITHUB_OUTPUT"
+          echo "build_number=${{ github.event.inputs.build_number }}" >> "$GITHUB_OUTPUT"
+          echo "target_repo=${{ github.event.inputs.target_repo }}" >> "$GITHUB_OUTPUT"
+          echo "artifact_type=${{ github.event.inputs.artifact_type }}" >> "$GITHUB_OUTPUT"
+          echo "artifact_path=${{ github.event.inputs.artifact_path }}" >> "$GITHUB_OUTPUT"
+          echo "docker_image=${{ github.event.inputs.docker_image }}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify connectivity and repository access
+        run: |
+          jf rt ping
+          jf rt curl -sf "/api/repositories/${{ github.event.inputs.source_repo }}" > /dev/null
+          jf rt curl -sf "/api/repositories/${{ github.event.inputs.target_repo }}" > /dev/null
+
+      - name: Verify build exists
+        run: |
+          jf rt curl -sf "/api/build/${{ github.event.inputs.build_name }}/${{ github.event.inputs.build_number }}" > /dev/null
+
+      - name: Security gate on published build
+        run: |
+          jf build-scan "${{ github.event.inputs.build_name }}" "${{ github.event.inputs.build_number }}"
+
+      - name: Promote build from dev to release
+        run: |
+          jf rt build-promote \
+            "${{ github.event.inputs.build_name }}" \
+            "${{ github.event.inputs.build_number }}" \
+            "${{ github.event.inputs.target_repo }}" \
+            --status="released" \
+            --comment="Promoted by GitHub Actions run ${{ github.run_id }}" \
+            --copy=true
+
+      - name: Publish promotion summary
+        run: |
+          echo "## Promotion Completed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build: ${{ github.event.inputs.build_name }} #${{ github.event.inputs.build_number }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source repo: ${{ github.event.inputs.source_repo }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target repo: ${{ github.event.inputs.target_repo }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Artifact type: ${{ github.event.inputs.artifact_type }}" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy_staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: promote
+    environment: staging
+    steps:
+      - name: Set up JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Prepare staging artifact (jar)
+        if: ${{ needs.promote.outputs.artifact_type == 'jar' }}
+        run: |
+          mkdir -p release-artifacts
+          jf rt download \
+            "${{ needs.promote.outputs.target_repo }}/${{ needs.promote.outputs.artifact_path }}" \
+            "release-artifacts/" \
+            --flat=false \
+            --fail-no-op=true
+          find release-artifacts -type f
+
+      - name: Prepare staging artifact (docker)
+        if: ${{ needs.promote.outputs.artifact_type == 'docker' }}
+        run: |
+          JF_HOST=$(echo "${JF_URL}" | sed -E 's#^https?://##')
+          echo "${JF_ACCESS_TOKEN}" | docker login "${JF_HOST}" -u token --password-stdin
+          docker pull "${JF_HOST}/${{ needs.promote.outputs.docker_image }}"
+          docker image ls | grep "${{ needs.promote.outputs.docker_image }}"
+
+      - name: Deploy and smoke test in staging
+        run: |
+          echo "Deploy command goes here (Helm, kubectl, ECS, VM script, etc.)"
+          echo "Run smoke tests here and fail this step if checks do not pass"
+
+  deploy_production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: deploy_staging
+    environment: production
+    steps:
+      - name: Production rollout
+        run: |
+          echo "Deploy the same promoted artifact to production"
+          echo "No rebuild is allowed at this stage"
+
+      - name: Production summary
+        run: |
+          echo "## Production Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build: ${{ needs.promote.outputs.build_name }} #${{ needs.promote.outputs.build_number }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target repo: ${{ needs.promote.outputs.target_repo }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Status: deployed" >> "$GITHUB_STEP_SUMMARY"

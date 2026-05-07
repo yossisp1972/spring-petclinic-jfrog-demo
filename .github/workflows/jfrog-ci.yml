@@ -77,14 +77,9 @@ jobs:
           set -e
 
           if [ ${AUDIT_EXIT} -ne 0 ]; then
-            if grep -q "exit status 41" jfrog-audit.err; then
-              echo "jf audit returned exit ${AUDIT_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
-              echo "SCA findings may still be present in jfrog-audit.json and in the JFrog platform."
-            else
-              echo "jf audit failed with exit ${AUDIT_EXIT}." >&2
-              cat jfrog-audit.err >&2
-              exit ${AUDIT_EXIT}
-            fi
+            echo "jf audit failed with exit ${AUDIT_EXIT}." >&2
+            cat jfrog-audit.err >&2
+            exit ${AUDIT_EXIT}
           fi
 
       - name: Xray artifact scan
@@ -95,14 +90,9 @@ jobs:
           set -e
 
           if [ ${SCAN_EXIT} -ne 0 ]; then
-            if grep -q "exit status 41" jfrog-scan.err; then
-              echo "jf scan returned exit ${SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
-              echo "Artifact SCA findings may still be present in jfrog-scan.json and in the JFrog platform."
-            else
-              echo "jf scan failed with exit ${SCAN_EXIT}." >&2
-              cat jfrog-scan.err >&2
-              exit ${SCAN_EXIT}
-            fi
+            echo "jf scan failed with exit ${SCAN_EXIT}." >&2
+            cat jfrog-scan.err >&2
+            exit ${SCAN_EXIT}
           fi
 
       - name: Upload jar to JFrog Artifactory
@@ -126,11 +116,7 @@ jobs:
           if [ ${BUILD_SCAN_EXIT} -eq 0 ]; then
             echo "success" > jfrog-build-scan.status
           else
-            if grep -q "exit status 41" jfrog-build-scan.err; then
-              echo "soft-fail-entitlement" > jfrog-build-scan.status
-              echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}. Optional Advanced Security scanners are unavailable for this account (expected in some trial tiers)."
-              echo "Build SCA findings may still be present in JFrog platform."
-            elif grep -q "not selected for indexing" jfrog-build-scan.err; then
+            if grep -q "not selected for indexing" jfrog-build-scan.err; then
               echo "soft-fail-indexing" > jfrog-build-scan.status
               echo "jf build-scan returned exit ${BUILD_SCAN_EXIT}: build is not selected for Xray indexing."
               echo "To fix: in JFrog UI go to Xray Settings -> Builds Indexing and add 'spring-petclinic-jfrog' to the indexed builds list."
@@ -159,9 +145,6 @@ jobs:
             echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
             echo "Build scan completed successfully for this run." >> $GITHUB_STEP_SUMMARY
             echo "See JFrog UI for policy-based issue counts for build \`${BUILD_NAME}\` #${BUILD_NUMBER}." >> $GITHUB_STEP_SUMMARY
-          elif [ "${BUILD_SCAN_STATUS}" = "soft-fail-entitlement" ]; then
-            echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
-            echo "Build scan executed with limited coverage because optional Advanced Security scanners are unavailable in this account tier." >> $GITHUB_STEP_SUMMARY
           elif [ "${BUILD_SCAN_STATUS}" = "soft-fail-permission" ]; then
             echo "### Build Scan (UI-Aligned)" >> $GITHUB_STEP_SUMMARY
             echo "Build scan could not be fully evaluated due to Xray permission limits for this CI token (403 Forbidden)." >> $GITHUB_STEP_SUMMARY
