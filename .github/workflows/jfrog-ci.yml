@@ -130,10 +130,18 @@ jobs:
       - name: Publish Xray scan results to workflow summary
         if: always()
         run: |
+          JF_BASE=$(echo "${{ secrets.JF_URL }}" | sed 's#/$##')
+          BUILD_LIST_URL="${JF_BASE}/ui/builds"
+          BUILD_URL="${JF_BASE}/ui/builds/${BUILD_NAME}/${BUILD_NUMBER}/published"
+          ARTIFACTS_URL="${JF_BASE}/ui/repos/tree/General/${DEPLOY_REPO}/org/springframework/samples/petclinic/${GITHUB_SHA}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
           echo "## JFrog Xray Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build:** \`${BUILD_NAME}\` #${BUILD_NUMBER}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${GITHUB_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build details:** [Open build in JFrog](${BUILD_URL})" >> $GITHUB_STEP_SUMMARY
+          echo "**Builds list:** [Open builds view](${BUILD_LIST_URL})" >> $GITHUB_STEP_SUMMARY
+          echo "**Uploaded artifacts:** [Open artifact folder](${ARTIFACTS_URL})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           BUILD_SCAN_STATUS="not-run"
@@ -194,7 +202,7 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> Full scan details available in JFrog platform under Builds → \`${BUILD_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "> Full scan details are also available in [JFrog Builds](${BUILD_LIST_URL})." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload scan reports as workflow artifacts
         if: always()
